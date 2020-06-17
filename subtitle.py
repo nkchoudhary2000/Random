@@ -1,6 +1,7 @@
 import re
 import random
 import argparse
+import requests
 from datetime import datetime
 from googletrans import Translator
 
@@ -69,15 +70,22 @@ def rtn_cnvt_lst_timestamp(text):
 #return translate text
 def rtn_translate(text):
 	try:
+		# url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q=" + text
+		# r = requests.get(url)
+		# return str(r.json()[0][0][0])
+
 		return translator.translate(text, src = 'fr', dest = 'en').text
 	except Exception as e:
-		return "error"
+		return e
 
 
 def create_subtitle(text, time, subtitle):
 	meaning = ""
 	subtitle_en = ""
 	subtitle_color = ""
+
+	meaning_word = []
+	en_trans = ""
 
 	if subtitle:
 		#for Original Subtitle
@@ -87,7 +95,12 @@ def create_subtitle(text, time, subtitle):
 		dialogue_list = rtn_lst_undialogue(text)
 		timestamps = rtn_cnvt_lst_timestamp(time)
 
-	for timestamp, each_dialogue in zip(timestamps, dialogue_list):
+	for each_dialogue in dialogue_list:
+		en_trans += each_dialogue + "\n"
+
+	en_trans = rtn_translate(en_trans).split('\n')
+
+	for timestamp, each_dialogue, english in zip(timestamps, dialogue_list, en_trans):
 		
 		words = each_dialogue.split(' ')
 		#small error handling temp code
@@ -98,18 +111,8 @@ def create_subtitle(text, time, subtitle):
 		count_word = len(words)
 		index = random.sample(range(0,count_word),2)
 
-		en_trans = rtn_translate(each_dialogue)
-		print(en_trans)
-		word1_trans = rtn_translate(words[index[0]])
-		word2_trans = rtn_translate(words[index[1]])
-
-		meaning += timestamp + "\n" + \
-				"<font color=\"#0080ff\">" + words[index[0]] + "</font>	•	" \
-				"<font color=\"#ff0000\">" + word1_trans + "</font><br/>" \
-				"<font color=\"#0080ff\">" + words[index[1]] + "</font>	•	" \
-				"<font color=\"#ff0000\">" + word2_trans + "</font><br/>" \
-				+ "\n\n"
-
+		meaning_word.append(words[index[0]])
+		meaning_word.append(words[index[1]])
 
 		words[index[0]] = "<font color=\"#0080ff\">" + words[index[0]] + "</font>"
 		words[index[1]] = "<font color=\"#ff0000\">" + words[index[1]] + "</font>"
@@ -119,7 +122,27 @@ def create_subtitle(text, time, subtitle):
 			word += w + " "
 
 		subtitle_color += timestamp + "\n" + word + "\n\n"
-		subtitle_en += timestamp + "\n" + en_trans + "\n\n"
+		subtitle_en += timestamp + "\n" + english + "\n\n"
+
+	#convert word list into string
+	str_word = ""
+	for word in meaning_word:
+		str_word += word + "\n"
+	en_meaning_word = rtn_translate(str_word).split('\n')
+
+	for i in range(0,len(meaning_word),2):
+		meaning += "" \
+				"<font color=\"#0080ff\">" + meaning_word[i] + "</font>	•	" \
+				"<font color=\"#ff0000\">" + en_meaning_word[i] + "</font><br/>" \
+				"<font color=\"#0080ff\">" + meaning_word[i+1] + "</font>	•	" \
+				"<font color=\"#ff0000\">" + en_meaning_word[i+1] + "</font>"\
+				+ "\n"
+	meanings = meaning.split('\n')
+	meaning = ""
+
+	for t, w in zip(timestamps, meanings):
+		meaning += t + "\n" + w + "\n\n"
+
 
 	file_meaning = open('meaning.srt', 'w', encoding='utf8')
 	file_en_sub = open('subtitle_en.srt', 'w', encoding = 'utf8')
