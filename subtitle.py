@@ -1,158 +1,182 @@
 import re
 import random
 import argparse
-import requests
+import datetime as duration
 from datetime import datetime
 from googletrans import Translator
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--sub_file', help='Name of the sub file')
-parser.add_argument('--time_file', help='timestamps of the sub file')
-parser.add_argument('--sub_type',default=False, help='true|false')
-
+parser.add_argument('--file',nargs = "*",type = str, default = ["subtitle_src.srt", "time.time", "subtitle_en.srt"], help = 'Support only two file .srt and .time Default file \"subtitle.srt\", \"time.time\"')
+parser.add_argument('--lang',nargs = "*",type = str, default = ["fr", "en"], help = 'use --lang sl dl where sl:source language and dl: destination language default sl:fr and dl:en')
 args = parser.parse_args()
 
-sub_file = args.sub_file
-time_file = args.time_file
-sub_type = args.sub_type
-
+#Global variables
+color_counter = 0
 translator = Translator()
-#if subtitle already made
-def rtn_lst_timestamp(text):
 
-	timestamp = re.findall(r'\d{1,}\n\d{2}:\d{2}:\d{2}.*', text)
-	return timestamp
-#if subtitle already made
-def rtn_lst_dialogue(text):
-	temp_list = []
-	dialogues = re.split(r'\d{1,}\n\d{2}:\d{2}:\d{2}.*', text)[1:]
-	for dialogue in dialogues:
-		text = re.sub(r'\n',' ', dialogue)
-		text = re.sub(r'<.*?>',' ', text)
-		text = re.sub(r'\s{1,}',' ', text)
-		text = text.strip()
+#validation
+if(len(args.file) > 2):
+    print("Please use \"subtitle\" and \"time\" file only")
+    exit()
 
-		temp_list.append(text)
+if(len(args.lang) != 2):
+    print("Please use valid language")
+    exit()
 
-	dialogues = temp_list
-	return dialogues
+def rwfile(fname, mode, codec='utf8', text = ""):
+    try:
+        file = open(fname, mode, encoding=codec)
+        if mode == 'r':
+            text = str(file.read())
+        else:
+            file.write(text)
+    except Exception as e:
+        print("Exception: " + str(e))
+        if(codec=='latin-1'):
+            exit()
+        else:
+            text = rwfile(fname, mode, 'latin-1', text)
 
-#if subtitle is not yet made
-def rtn_lst_undialogue(text):
-	dialogues = text.split('\n')
-	return dialogues
+    return text
 
-#create timestamp from "time.tmp" file format "hh:mm:ss"
-def rtn_cnvt_lst_timestamp(text):
-	sub = ""
-	temp_timestamps = []
-	timestamps = text.split('\n')
-	for timestamp in timestamps:
-		try:
-			time = datetime.strptime(timestamp,"%M:%S")
-		except:
-			time = datetime.strptime(timestamp,"%H:%M:%S")
+def filter(text):
+    text = re.sub(r'\n',' ', text)
+    text = re.sub(r'<.*?>',' ', text)
+    text = re.sub(r'\s{1,}',' ', text)
+    text = text.strip()
+    return text
 
-		time = str(time.strftime("%H:%M:%S"))
+def color(text):
+    global color_counter
+    text = filter(text)
+    colors = ['ff595e','ffca3a','8ac926','1982c4','6a4c93','ee4266','ffd23f','0ead69','197278','ff5400','db3a34','ffc857','6a994e','a7c957','083d77','f4d35e','247ba0','fb6107','7cb518','80ed99']
+    color_counter = (color_counter + 1) if (color_counter < len(colors)-1) else 0
+    text = "<font color=\'#" + colors[color_counter] + "\'>" + text + "</font>" 
+    return text
 
-		#timestamps.insert(timestamps.index(timestamp),time)
-		temp_timestamps.append(time)
+def is_subtitle(text):
+    return True if re.search(r'\d{1,}\n\d{2}:\d{2}:\d{2}.*', text) else False
 
-	timestamps = temp_timestamps
-	for i in range(len(timestamps) - 1):
-		sub += str(i) + "\n" + str(timestamps[i]) + ",000 --> " + str(timestamps[i+1]) + ",000\n"
-	#outside of for block to add for last item in list
-	sub += str(len(timestamps)) + "\n" + str(timestamps[-1]) + ",000 --> 01:00:00,000\n"
+def to_timestamp(text):
+    timestamps = text.split('\n')
+    temp_stamps = []
+    ftime = ['%S','%M:%S','%H:%M:%S']
 
-	timestamps = rtn_lst_timestamp(sub)
-	return timestamps
+    for each_stamp in timestamps:
+        index = int(len(each_stamp) / 3)
 
-#return translate text
-def rtn_translate(text):
-	try:
-		# url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q=" + text
-		# r = requests.get(url)
-		# return str(r.json()[0][0][0])
+        try:
+            each_stamp = datetime.strptime(each_stamp, ftime[index])
+            each_stamp = str(each_stamp.strftime("%H:%M:%S"))
+            temp_stamps.append(each_stamp)
+        except Exception as e:
+            print("Problem in timestamp!", e)
+            exit()
+    
+    index = 0
+    for each_stamp in temp_stamps:
+        try:
+            timestamps[index] = str(index+1) + "\n" \
+                                 + temp_stamps[index] \
+                                 + ",000 --> " \
+                                 + temp_stamps[index+1] + ",000"
+            index += 1
+        except:
+            time = datetime.strptime(temp_stamps[index],"%H:%M:%S")
+            time = time + duration.timedelta(0,7)
+            time = time.strftime("%H:%M:%S")
+            timestamps[index] = str(index+1) + "\n" \
+                                 + temp_stamps[index] \
+                                 + ",000 --> " \
+                                 + time + ",000"
 
-		return translator.translate(text, src = 'fr', dest = 'en').text
-	except Exception as e:
-		return e
+    return  timestamps
+
+def timestamps(text):
+    if is_subtitle(text):
+        return re.findall(r'\d{1,}\n\d{2}:\d{2}:\d{2}.*', text)
+    else:
+        return to_timestamp(text)
+
+def dialogues(text):
+    temp_dialogues = []
+    if is_subtitle(text):
+        dialogues = re.split(r'\d{1,}\n\d{2}:\d{2}:\d{2}.*', text)[1:]
+        for dialogue in dialogues:
+            dialogue = filter(dialogue)
+            temp_dialogues.append(dialogue)
+        return temp_dialogues
+    else:
+        dialogues = text.split('\n')
+        return dialogues
+
+def to_translated(text, sl='fr', dl='en'):
+    try:
+        return translator.translate(text, src = sl, dest = dl).text
+    except Exception as e:
+        print("Translation Error: " + str(e))
+        return "Translation Error: " + str(e)
+
+def to_string(rows):
+    text = ""
+    try:
+        for each_row in rows:
+            text += each_row + "\n"
+        return text
+    except Exception as e:
+        print ("String Error: " + str(e))
+        return False
+
+def apply_timestamps(timestamps, dialogues):
+    text = ""
+    for t,d in zip(timestamps,dialogues):
+        text += t + "\n" + d + "\n\n"
+    return text
+
+def meanings(dialogues,count = 2):
+    temp_dialogues = []
+    temp_meaning = []
+    for dialogue in dialogues:
+        words = dialogue.split(' ')
+        words = words + ['.'] * 3 if len(words) < 2 else words
+        icount = count if count < len(words) else len(words)
+
+        index = random.sample(range(0,len(words)), icount)
+
+        for i in range(0, len(index)):
+            temp_meaning.append(words[index[i]])
+            words[index[i]] = color(words[index[i]])
+
+        temp_dialogues.append(" ".join(words))
+
+    #New method required here 
+    word_stat = dict((word, temp_meaning.count(word)) for word in temp_meaning)
+    list_of_words = "\n".join(map(str,[*sorted(word_stat.items(), key = lambda x:x[1], reverse= True)]))
+    rwfile("dictionary.txt", 'w','utf8',list_of_words + "\n==END==\n")
+
+    return temp_dialogues
+
+#sfile:source_file and tfile:time_file
+def create_subtitle(sfile = args.file[0], tfile = args.file[1]):
+    text = rwfile(sfile, 'r')
+    time = rwfile(tfile, 'r')
+    dialogues_temp = dialogues(text)
+    timestamps_temp = timestamps(text) if is_subtitle(text) else timestamps(time)
+    rwfile("temp_sub.txt", 'w','utf8', "\n".join(dialogues_temp))
+    rwfile("temp_time.txt", 'w','utf8', "\n".join(timestamps_temp))
+    dialogues_en = to_translated("\n".join(dialogues_temp)).split('\n')
+        
+    dialogues_en = meanings(dialogues_en)
+    dialogues_en = apply_timestamps(timestamps_temp, dialogues_en)
+    rwfile("subtitle_en.srt", 'w', 'utf8', dialogues_en)
+
+    dialogues_color = meanings(dialogues_temp)
+    dialogues_color = apply_timestamps(timestamps_temp, dialogues_color)
+    rwfile("subtitle_color.srt", 'w', 'utf8', dialogues_color)
 
 
-def create_subtitle(text, time, subtitle):
-	meaning = ""
-	subtitle_en = ""
-	subtitle_color = ""
-
-	meaning_word = []
-	en_trans = ""
-
-	if subtitle:
-		#for Original Subtitle
-		dialogue_list = rtn_lst_dialogue(text)
-		timestamps = rtn_lst_timestamp(text)  #already made subtitle have timestamp
-	else:
-		dialogue_list = rtn_lst_undialogue(text)
-		timestamps = rtn_cnvt_lst_timestamp(time)
-
-	for each_dialogue in dialogue_list:
-		en_trans += each_dialogue + "\n"
-
-	en_trans = rtn_translate(en_trans).split('\n')
-
-	for timestamp, each_dialogue, english in zip(timestamps, dialogue_list, en_trans):
-		
-		words = each_dialogue.split(' ')
-		#small error handling temp code
-		if len(words) < 2:
-			words.append(".")
-			words.append(".")
-			
-		count_word = len(words)
-		index = random.sample(range(0,count_word),2)
-
-		meaning_word.append(words[index[0]])
-		meaning_word.append(words[index[1]])
-
-		words[index[0]] = "<font color=\"#0080ff\">" + words[index[0]] + "</font>"
-		words[index[1]] = "<font color=\"#ff0000\">" + words[index[1]] + "</font>"
-
-		word = ""
-		for w in words:
-			word += w + " "
-
-		subtitle_color += timestamp + "\n" + word + "\n\n"
-		subtitle_en += timestamp + "\n" + english + "\n\n"
-
-	#convert word list into string
-	str_word = ""
-	for word in meaning_word:
-		str_word += word + "\n"
-	en_meaning_word = rtn_translate(str_word).split('\n')
-
-	for i in range(0,len(meaning_word),2):
-		meaning += "" \
-				"<font color=\"#0080ff\">" + meaning_word[i] + "</font>	•	" \
-				"<font color=\"#ff0000\">" + en_meaning_word[i] + "</font><br/>" \
-				"<font color=\"#0080ff\">" + meaning_word[i+1] + "</font>	•	" \
-				"<font color=\"#ff0000\">" + en_meaning_word[i+1] + "</font>"\
-				+ "\n"
-	meanings = meaning.split('\n')
-	meaning = ""
-
-	for t, w in zip(timestamps, meanings):
-		meaning += t + "\n" + w + "\n\n"
+create_subtitle()
 
 
-	file_meaning = open('meaning.srt', 'w', encoding='utf8')
-	file_en_sub = open('subtitle_en.srt', 'w', encoding = 'utf8')
-	file_color_sub = open('subtitle_color.srt', 'w', encoding = 'utf8')
 
-	file_meaning.write(meaning)
-	file_en_sub.write(subtitle_en)
-	file_color_sub.write(subtitle_color)
 
-text = str(open(sub_file, 'r', encoding='utf8').read())
-time = str(open(time_file, 'r', encoding='utf8').read())
-
-create_subtitle(text, time, sub_type)
