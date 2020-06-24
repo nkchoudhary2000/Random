@@ -8,11 +8,18 @@ from googletrans import Translator
 parser = argparse.ArgumentParser()
 parser.add_argument('--file',nargs = "*",type = str, default = ["subtitle_src.srt", "time.time", "subtitle_en.srt"], help = 'Support only two file .srt and .time Default file \"subtitle.srt\", \"time.time\"')
 parser.add_argument('--lang',nargs = "*",type = str, default = ["fr", "en"], help = 'use --lang sl dl where sl:source language and dl: destination language default sl:fr and dl:en')
+parser.add_argument('--count', default = 2, help = 'use --count to color words of this number')
 args = parser.parse_args()
 
 #Global variables
 color_counter = 0
 translator = Translator()
+
+try:
+    args.count = int(args.count)
+except Exception as e:
+    print("Count Error: " + str(e))
+    exit()
 
 #validation
 if(len(args.file) > 2):
@@ -133,26 +140,27 @@ def apply_timestamps(timestamps, dialogues):
         text += t + "\n" + d + "\n\n"
     return text
 
-def meanings(dialogues,count = 2):
+def meanings(dialogues,count = args.count):
     temp_dialogues = []
-    temp_meaning = []
+    word_count = []
     for dialogue in dialogues:
         words = dialogue.split(' ')
-        words = words + ['.'] * 3 if len(words) < 2 else words
+        # words = words + ['.'] * 3 if len(words) < 2 else words
         icount = count if count < len(words) else len(words)
 
         index = random.sample(range(0,len(words)), icount)
 
         for i in range(0, len(index)):
-            temp_meaning.append(words[index[i]])
+            temp_word = re.sub(r'[\[\!\@\#\$\%\^\&\*\(\)_\+\|\"\:\<\>\?\}\{\~\`\=\\\;\,\.\/\"\]]', '', words[index[i]].lower())
+            word_count.append(temp_word)
             words[index[i]] = color(words[index[i]])
 
         temp_dialogues.append(" ".join(words))
 
     #New method required here 
-    word_stat = dict((word, temp_meaning.count(word)) for word in temp_meaning)
+    word_stat = dict((word, word_count.count(word)) for word in word_count)
     list_of_words = "\n".join(map(str,[*sorted(word_stat.items(), key = lambda x:x[1], reverse= True)]))
-    rwfile("dictionary.txt", 'w','utf8',list_of_words + "\n==END==\n")
+    rwfile("dictionary.txt", 'w','utf8',list_of_words)
 
     return temp_dialogues
 
@@ -162,6 +170,10 @@ def create_subtitle(sfile = args.file[0], tfile = args.file[1]):
     time = rwfile(tfile, 'r')
     dialogues_temp = dialogues(text)
     timestamps_temp = timestamps(text) if is_subtitle(text) else timestamps(time)
+
+    if (len(dialogues_temp) > len(timestamps_temp)):
+        timestamps_temp = timestamps_temp + ['exceed'] * (len(dialogues_temp) -len(timestamps_temp))
+
     rwfile("temp_sub.txt", 'w','utf8', "\n".join(dialogues_temp))
     rwfile("temp_time.txt", 'w','utf8', "\n".join(timestamps_temp))
     dialogues_en = to_translated("\n".join(dialogues_temp)).split('\n')
